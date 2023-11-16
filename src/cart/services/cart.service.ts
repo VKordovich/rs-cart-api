@@ -1,55 +1,89 @@
 import { Injectable } from '@nestjs/common';
-
-import { v4 } from 'uuid';
-
+import { v4 as uuidv4 } from 'uuid';
 import { Cart } from '../models';
+import {
+  Client,
+  ClientConfig
+} from 'pg';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class CartService {
-  private userCarts: Record<string, Cart> = {};
+  config: ClientConfig;
+  client: Client;
 
-  findByUserId(userId: string): Cart {
-    return this.userCarts[ userId ];
-  }
-
-  createByUserId(userId: string) {
-    const id = v4(v4());
-    const userCart = {
-      id,
-      items: [],
+  constructor(private configService: ConfigService) {
+    this.config = {
+      user: this.configService.get('PG_USERNAME'),
+      password: this.configService.get('PG_PASSWORD'),
+      host: this.configService.get('PG_HOST'),
+      database: this.configService.get('PG_DATABASE'),
+      port: this.configService.get('PG_PORT'),
+      ssl: {
+        rejectUnauthorized: false
+      },
+      connectionTimeoutMillis: 5000
     };
-
-    this.userCarts[ userId ] = userCart;
-
-    return userCart;
+    this.initClient();
   }
 
-  findOrCreateByUserId(userId: string): Cart {
-    const userCart = this.findByUserId(userId);
+  async findByUserId(userId: string): Promise<Cart> {
+    const { rows: carts } = await this.client.query(`
+      SELECT * FROM carts, cart_item 
+      WHERE carts.id = cart_item.cart_id
+      AND carts.user_id = '${userId}'`)
+    const [cart] = carts;
+    return cart;
+  }
 
-    if (userCart) {
-      return userCart;
+  async createByUserId(): Promise<Cart> {
+    const id = uuidv4();
+    const product_id = uuidv4();
+    const userId = uuidv4();
+
+    await this.client.query(`
+    insert into carts (id, user_id, created_at, updated_at, status) values
+    ('${id}', '${userId}', '2020-01-01','2021-01-01', 'OPEN')
+    `)
+    await this.client.query(`
+   insert into cart_item (cart_id, product_id, count) values
+   ('${id}', '${product_id}', '10')
+    `)
+    const { rows: carts } = await this.client.query(`
+      SELECT * FROM carts, cart_item 
+      WHERE carts.id = cart_item.cart_id
+      AND carts.id = '${id}'`)
+    const [cart] = carts;
+    return cart;
+  }
+
+  async findOrCreateByUserId(userId?: string): Promise<Cart> {
+    if (!userId) {
+      return this.createByUserId();
     }
-
-    return this.createByUserId(userId);
+    return await this.findByUserId(userId);
   }
 
-  updateByUserId(userId: string, { items }: Cart): Cart {
-    const { id, ...rest } = this.findOrCreateByUserId(userId);
+  // updateByUserId(userId: string, { items }: Cart): Cart {
+  //   const { id, ...rest } = this.findOrCreateByUserId(userId);
+  //
+  //   const updatedCart = {
+  //     id,
+  //     ...rest,
+  //     items: [ ...items ],
+  //   }
+  //
+  //   this.userCarts[ userId ] = { ...updatedCart };
+  //
+  //   return { ...updatedCart };
+  // }
+  //
+  // removeByUserId(userId): void {
+  //   this.userCarts[ userId ] = null;
+  // }
 
-    const updatedCart = {
-      id,
-      ...rest,
-      items: [ ...items ],
-    }
-
-    this.userCarts[ userId ] = { ...updatedCart };
-
-    return { ...updatedCart };
+  private async initClient(): Promise<void> {
+    this.client = new Client(this.config);
+    await this.client.connect();
   }
-
-  removeByUserId(userId): void {
-    this.userCarts[ userId ] = null;
-  }
-
 }

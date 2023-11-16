@@ -1,0 +1,32 @@
+service: rs-card-api
+provider:
+  name: aws
+  runtime: nodejs14.x
+  region: eu-central-1
+
+  iam:
+    role:
+      name: rs-cart-role-nest
+      statements:
+        - Effect: 'Allow'
+          Resource: '*'
+          Action: '*'
+
+  environment:
+    PG_HOST: rs-lesson-8-db.c8xtn4wlrszc.eu-central-1.rds.amazonaws.com
+    PG_PORT: 5432
+    PG_DATABASE: rsLesson8Db
+    PG_USERNAME: postgres
+    PG_PASSWORD: 4rupELV0jZNNDgEC6CoKeR
+
+plugins:
+  - serverless-offline
+  - serverless-jetpack
+
+functions:
+  main:
+    handler: dist/main.handler
+    events:
+      - http:
+          method: ANY
+          path: /{proxy+}
